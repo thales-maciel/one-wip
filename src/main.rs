@@ -27,7 +27,7 @@ enum Mode {
     Overview,
     Focus,
     Add,
-    Edit(Column, usize),
+    Edit(usize),
 }
 
 #[derive(Debug)]
@@ -42,19 +42,13 @@ pub struct KanbanBoard {
 }
 
 impl KanbanBoard {
-    pub fn foo() -> KanbanBoard {
-        todo!("implement me")
-    }
-}
-
-impl KanbanBoard {
     fn new() -> KanbanBoard {
         KanbanBoard {
             input: String::new(),
             current_mode: Mode::Add,
             current_column: Column::Todo,
             current_index: 0,
-            todo: vec!["Sample todo 1".into()],
+            todo: vec![],
             in_progress: None,
             done: Vec::new(),
         }
@@ -64,6 +58,7 @@ impl KanbanBoard {
         let cloned = self.input.clone();
         self.todo.push(cloned);
         self.input = String::new();
+        self.current_column = Column::Todo;
         self.current_index = self.todo.len() - 1;
         self.current_mode = Mode::Overview;
     }
@@ -274,27 +269,27 @@ impl KanbanBoard {
             Column::Todo => {
                 if let Some(task) = self.todo.get(self.current_index) {
                     self.input = task.clone();
-                    self.current_mode = Mode::Edit(Column::Todo, self.current_index);
+                    self.current_mode = Mode::Edit(self.current_index);
                 }
             }
             Column::InProgress => {
                 if let Some(task) = &self.in_progress {
                     self.input = task.clone();
-                    self.current_mode = Mode::Edit(Column::InProgress, self.current_index);
+                    self.current_mode = Mode::Edit(self.current_index);
                 }
             }
             Column::Done => {
                 if let Some(task) = self.done.get(self.current_index) {
                     self.input = task.clone();
-                    self.current_mode = Mode::Edit(Column::Done, self.current_index);
+                    self.current_mode = Mode::Edit(self.current_index);
                 }
             }
         }
     }
 
-    fn edit_task(&mut self, col: Column, index: usize) {
+    fn edit_task(&mut self, index: usize) {
         let value = self.input.clone();
-        match col {
+        match self.current_column {
             Column::Todo => self.todo[index] = value,
             Column::Done => self.done[index] = value,
             Column::InProgress => self.in_progress = Some(value)
@@ -399,8 +394,8 @@ fn run_app<B: Backend>(
                             KeyCode::Char('q') => app.leave_focus(),
                             _ => {}
                         },
-                        Mode::Edit(col, idx) => match key.code {
-                            KeyCode::Enter => app.edit_task(col, idx),
+                        Mode::Edit(idx) => match key.code {
+                            KeyCode::Enter => app.edit_task(idx),
                             KeyCode::Char(c) => app.on_input(c),
                             KeyCode::Backspace => app.on_backspace(),
                             KeyCode::Esc => app.leave_focus(),
@@ -510,23 +505,11 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut KanbanBoard) {
         }
         Mode::Focus => {
             if let Some(item) = &app.in_progress {
-                // let layout = Layout::default()
-                //     .direction(Direction::Horizontal)
-                //     .constraints(
-                //         [
-                //             Constraint::Percentage(10),
-                //             Constraint::Percentage(80),
-                //             Constraint::Percentage(10)
-                //         ].as_ref()
-                //     )
-                //     .split(f.size());
                 let wip = Paragraph::new(item.to_string())
                     .alignment(Alignment::Center)
                     .style(Style::default().fg(Color::LightCyan))
                     .block(Block::default().borders(Borders::ALL).title("Wip"));
-                // f.render_widget(wip, layout[1]);
-                // let block = Block::default().title("test").borders(Borders::ALL);
-                let area = centered_rect(60, 20, f.size());
+                let area = centered_rect(50, 50, f.size());
                 f.render_widget(wip, area)
             }
         }
