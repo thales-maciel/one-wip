@@ -9,13 +9,13 @@ use std::{
 };
 use ratatui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame, Terminal,
 };
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq)]
 enum Column {
     Todo,
     InProgress,
@@ -31,14 +31,100 @@ enum Mode {
 }
 
 #[derive(Debug)]
+pub struct ListColumn<T> {
+    index: Option<usize>,
+    items: Vec<T>,
+}
+
+impl ListColumn<String> {
+    fn new() -> ListColumn<String> {
+        ListColumn {
+            index: None,
+            items: vec![],
+        }
+    }
+
+    fn push(&mut self, item: String) {
+        self.items.push(item);
+        self.index = Some(self.items.len() - 1);
+    }
+
+    fn remove(&mut self) -> Option<String> {
+        if let Some(item) = self.current_item() {
+            let index = self.index.unwrap();
+            self.items.remove(index);
+            if self.items.len() == 0 {
+                self.index = None;
+            } else {
+                if index + 1 > self.items.len() {
+                    self.index = Some(self.items.len() - 1);
+                } else {
+                    self.index = Some(index);
+                }
+            }
+            Some(item)
+        } else {
+            None
+        }
+    }
+
+    fn current_item(&mut self) -> Option<String> {
+        if let Some(index) = self.index {
+            self.items.get(index).cloned()
+        } else {
+            None
+        }
+    }
+
+    fn move_item_up(&mut self) {
+        if let Some(index) = self.index {
+            if index > 0 {
+                self.index = Some(index - 1);
+                self.items.swap(index, index - 1);
+            }
+        }
+    }
+
+    fn move_item_down(&mut self) {
+        if let Some(index) = self.index {
+            if index < self.items.len() - 1 {
+                self.index = Some(index + 1);
+                self.items.swap(index, index + 1);
+            }
+        }
+    }
+
+    fn down(&mut self) {
+        self.index = self.index
+            .filter(|&i| i + 1 < self.items.len())
+            .map(|i| i + 1)
+            .or_else(|| Some(self.items.len() - 1));
+    }
+
+    fn up(&mut self) {
+        self.index = self.index
+            .filter(|&i| i > 0)
+            .map(|i| i - 1);
+    }
+
+    fn replace_at(&mut self, index: usize, value: String) {
+        self.items[index] = value;
+    }
+
+    fn iter(&mut self) -> std::slice::Iter<String> {
+        self.items.iter()
+    }
+
+}
+
+#[derive(Debug)]
 pub struct KanbanBoard {
     input: String,
     current_mode: Mode,
     current_column: Column,
-    current_index: usize,
-    todo: Vec<String>,
+    todo: ListColumn<String>,
     in_progress: Option<String>,
-    done: Vec<String>,
+    done: ListColumn<String>,
 }
 
 impl KanbanBoard {
@@ -47,19 +133,20 @@ impl KanbanBoard {
             input: String::new(),
             current_mode: Mode::Add,
             current_column: Column::Todo,
-            current_index: 0,
-            todo: vec![],
+            todo: ListColumn::new(),
             in_progress: None,
-            done: Vec::new(),
+            done: ListColumn::new(),
         }
     }
 
     fn add_task(&mut self) {
+        if self.input.trim().is_empty() {
+            return;
+        }
         let cloned = self.input.clone();
         self.todo.push(cloned);
         self.input = String::new();
         self.current_column = Column::Todo;
-        self.current_index = self.todo.len() - 1;
         self.current_mode = Mode::Overview;
     }
 
@@ -67,113 +154,55 @@ impl KanbanBoard {
         if let Some(task) = self.in_progress.take() {
             self.done.push(task);
             self.current_column = Column::Done;
-            self.current_index = self.done.len() - 1;
+            self.current_mode = Mode::Overview;
         }
     }
 
     fn on_down(&mut self) {
         match self.current_column {
-            Column::Todo => {
-                if self.todo.get(self.current_index + 1).is_some() {
-                    self.current_index += 1;
-                }
-            }
-            Column::InProgress => {}
-            Column::Done => {
-                if self.done.get(self.current_index + 1).is_some() {
-                    self.current_index += 1;
-                }
-            }
+            Column::InProgress => {},
+            Column::Todo => self.todo.down(),
+            Column::Done => self.done.down(),
         }
     }
 
     fn on_up(&mut self) {
-        if self.current_index == 0 {
-            return;
-        };
         match self.current_column {
-            Column::InProgress => {}
-            _ => {
-                self.current_index -= 1;
-            }
+            Column::InProgress => {},
+            Column::Todo => self.todo.up(),
+            Column::Done => self.done.up(),
         }
     }
 
     fn on_left(&mut self) {
         match self.current_column {
-            Column::Todo => {}
-            Column::InProgress => {
-                if self.todo.len() > 0 {
-                    if let None = self.todo.get(self.current_index) {
-                        self.current_index = self.todo.len() - 1;
-                    }
-                    self.current_column = Column::Todo;
-                }
-            }
-            Column::Done => {
-                if let Some(_) = self.in_progress {
-                    self.current_column = Column::InProgress;
-                }
-            }
+            Column::InProgress => self.current_column = Column::Todo,
+            Column::Done => self.current_column = Column::InProgress,
+            _ => {}
         }
     }
 
     fn on_right(&mut self) {
         match self.current_column {
-            Column::Todo => {
-                if let Some(_) = self.in_progress {
-                    self.current_column = Column::InProgress;
-                }
-            }
-            Column::InProgress => {
-                if self.done.len() > 0 {
-                    if let None = self.done.get(self.current_index) {
-                        self.current_index = self.done.len() - 1;
-                    }
-                    self.current_column = Column::Done;
-                }
-            }
-            Column::Done => {}
+            Column::Todo => self.current_column = Column::InProgress,
+            Column::InProgress => self.current_column = Column::Done,
+            _ => {}
         }
     }
 
     fn on_move_up(&mut self) {
         match self.current_column {
-            Column::Todo => {
-                if self.todo.len() > 0 && self.current_index > 0 {
-                    let current = self.todo.remove(self.current_index);
-                    self.current_index -= 1;
-                    self.todo.insert(self.current_index, current);
-                }
-            }
-            Column::InProgress => {}
-            Column::Done => {
-                if self.done.len() > 0 && self.current_index > 0 {
-                    let current = self.done.remove(self.current_index);
-                    self.current_index -= 1;
-                    self.done.insert(self.current_index, current);
-                }
-            }
+            Column::Todo => self.todo.move_item_up(),
+            Column::Done => self.done.move_item_up(),
+            _ => {},
         }
     }
 
     fn on_move_down(&mut self) {
         match self.current_column {
-            Column::Todo => {
-                if self.todo.len() > 0 && self.current_index < self.todo.len() - 1 {
-                    let current = self.todo.remove(self.current_index);
-                    self.current_index += 1;
-                    self.todo.insert(self.current_index, current);
-                }
-            }
-            Column::InProgress => {}
-            Column::Done => {
-                if self.done.len() > 0 && self.current_index < self.done.len() - 1 {
-                    let current = self.done.remove(self.current_index);
-                    self.current_index += 1;
-                    self.done.insert(self.current_index, current);
-                }
-            }
+            Column::Todo => self.todo.move_item_down(),
+            Column::Done => self.done.move_item_down(),
+            _ => {},
         }
     }
 
@@ -181,8 +210,8 @@ impl KanbanBoard {
         match self.current_column {
             Column::Todo => {
                 if let None = self.in_progress {
-                    let task = self.todo.remove(self.current_index);
-                    self.in_progress = Some(task);
+                    let task = self.todo.remove();
+                    self.in_progress = task;
                     self.current_column = Column::InProgress;
                 }
             }
@@ -190,7 +219,6 @@ impl KanbanBoard {
                 if let Some(task) = self.in_progress.take() {
                     self.done.push(task);
                     self.current_column = Column::Done;
-                    self.current_index = self.done.len() - 1;
                 }
             }
             Column::Done => {}
@@ -201,8 +229,8 @@ impl KanbanBoard {
         match self.current_column {
             Column::Done => {
                 if let None = self.in_progress {
-                    let task = self.done.remove(self.current_index);
-                    self.in_progress = Some(task);
+                    let task = self.done.remove();
+                    self.in_progress = task;
                     self.current_column = Column::InProgress;
                 }
             }
@@ -210,7 +238,6 @@ impl KanbanBoard {
                 if let Some(task) = self.in_progress.take() {
                     self.todo.push(task);
                     self.current_column = Column::Todo;
-                    self.current_index = self.todo.len() - 1;
                 }
             }
             Column::Todo => {}
@@ -223,16 +250,10 @@ impl KanbanBoard {
                 self.in_progress = None;
             }
             Column::Done => {
-                if self.current_index == self.done.len() - 1 {
-                    self.current_index -= 1;
-                }
-                self.done.remove(self.current_index);
+                self.done.remove();
             }
             Column::Todo => {
-                if self.current_index == self.todo.len() - 1 {
-                    self.current_index -= 1;
-                }
-                self.todo.remove(self.current_index);
+                self.todo.remove();
             }
         }
     }
@@ -246,6 +267,9 @@ impl KanbanBoard {
     }
 
     fn on_cancel_input(&mut self) {
+        if self.input.trim().is_empty() {
+            return;
+        }
         self.current_mode = Mode::Overview;
         self.input.clear();
     }
@@ -258,6 +282,7 @@ impl KanbanBoard {
 
     fn leave_focus(&mut self) {
         self.current_mode = Mode::Overview;
+        self.input = String::new();
     }
 
     fn enter_add_mode(&mut self) {
@@ -267,31 +292,34 @@ impl KanbanBoard {
     fn enter_edit_mode(&mut self) {
         match self.current_column {
             Column::Todo => {
-                if let Some(task) = self.todo.get(self.current_index) {
+                if let Some(task) = self.todo.current_item() {
                     self.input = task.clone();
-                    self.current_mode = Mode::Edit(self.current_index);
+                    self.current_mode = Mode::Edit(self.todo.index.unwrap());
                 }
             }
             Column::InProgress => {
                 if let Some(task) = &self.in_progress {
                     self.input = task.clone();
-                    self.current_mode = Mode::Edit(self.current_index);
+                    self.current_mode = Mode::Edit(0);
                 }
             }
             Column::Done => {
-                if let Some(task) = self.done.get(self.current_index) {
+                if let Some(task) = self.done.current_item() {
                     self.input = task.clone();
-                    self.current_mode = Mode::Edit(self.current_index);
+                    self.current_mode = Mode::Edit(self.done.index.unwrap());
                 }
             }
         }
     }
 
     fn edit_task(&mut self, index: usize) {
+        if self.input.trim().is_empty() {
+            return;
+        }
         let value = self.input.clone();
         match self.current_column {
-            Column::Todo => self.todo[index] = value,
-            Column::Done => self.done[index] = value,
+            Column::Todo => self.todo.replace_at(index, value),
+            Column::Done => self.done.replace_at(index, value),
             Column::InProgress => self.in_progress = Some(value)
         };
         self.input = String::new();
@@ -425,22 +453,24 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut KanbanBoard) {
     match app.current_mode {
         Mode::Overview => {
             let mut todo_lines = vec![];
-            for (i, item) in app.todo.iter().enumerate() {
-                if app.current_column == Column::Todo && i == app.current_index {
-                    todo_lines.push(
-                        ListItem::new(item.to_string()).style(
-                            Style::default()
-                                .fg(Color::Yellow)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                    );
-                } else {
-                    todo_lines.push(ListItem::new(item.to_string()));
-                }
+            if let Some(index) = app.todo.index {
+                for (i, item) in app.todo.iter().enumerate() {
+                    if app.current_column == Column::Todo && i == index {
+                        todo_lines.push(
+                            ListItem::new(item.to_string()).style(
+                                Style::default()
+                                    .fg(Color::Yellow)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                        );
+                    } else {
+                        todo_lines.push(ListItem::new(item.to_string()));
+                    }
+                } 
             }
 
             let todo_list = List::new(todo_lines)
-                .block(Block::default().borders(Borders::ALL).title("Todo"))
+                .block(Block::default().borders(Borders::ALL).style(Style::default().fg(if app.current_column == Column::Todo {Color::Cyan} else {Color::White})).title("Todo"))
                 .highlight_style(
                     Style::default()
                         .bg(Color::Yellow)
@@ -469,7 +499,7 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut KanbanBoard) {
             }
 
             let in_progress = List::new(in_progress_lines)
-                .block(Block::default().borders(Borders::ALL).title("Wip"))
+                .block(Block::default().borders(Borders::ALL).style(Style::default().fg(if app.current_column == Column::InProgress {Color::Cyan} else {Color::White})).title("Wip"))
                 .highlight_style(
                     Style::default()
                         .bg(Color::Yellow)
@@ -479,22 +509,24 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut KanbanBoard) {
             f.render_widget(in_progress, chunks[1]);
 
             let mut done_lines = vec![];
-            for (i, item) in app.done.iter().enumerate() {
-                if app.current_column == Column::Done && i == app.current_index {
-                    done_lines.push(
-                        ListItem::new(item.to_string()).style(
-                            Style::default()
-                                .fg(Color::Yellow)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                    );
-                } else {
-                    done_lines.push(ListItem::new(item.to_string()));
+            if let Some(index) = app.done.index {
+                for (i, item) in app.done.iter().enumerate() {
+                    if app.current_column == Column::Done && i == index {
+                        done_lines.push(
+                            ListItem::new(item.to_string()).style(
+                                Style::default()
+                                    .fg(Color::Yellow)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                        );
+                    } else {
+                        done_lines.push(ListItem::new(item.to_string()));
+                    }
                 }
             }
 
             let done = List::new(done_lines)
-                .block(Block::default().borders(Borders::ALL).title("Done"))
+                .block(Block::default().borders(Borders::ALL).style(Style::default().fg(if app.current_column == Column::Done {Color::Cyan} else {Color::White})).title("Done"))
                 .highlight_style(
                     Style::default()
                         .bg(Color::Yellow)
@@ -504,16 +536,39 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut KanbanBoard) {
             f.render_widget(done, chunks[2]);
         }
         Mode::Focus => {
+            let focus_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(1)
+                .constraints(
+                    [
+                        Constraint::Percentage(50),
+                        Constraint::Min(3),
+                        Constraint::Percentage(50),
+                    ]
+                    .as_ref(),
+                )
+                .split(f.size());
             if let Some(item) = &app.in_progress {
                 let wip = Paragraph::new(item.to_string())
                     .alignment(Alignment::Center)
                     .style(Style::default().fg(Color::LightCyan))
                     .block(Block::default().borders(Borders::ALL).title("Wip"));
-                let area = centered_rect(50, 50, f.size());
-                f.render_widget(wip, area)
+                f.render_widget(wip, focus_layout[1])
             }
         }
         _ => {
+            let input_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .margin(1)
+                .constraints(
+                    [
+                        Constraint::Percentage(50),
+                        Constraint::Min(3),
+                        Constraint::Percentage(50),
+                    ]
+                    .as_ref(),
+                )
+                .split(f.size());
             let input = Paragraph::new(app.input.clone())
                 .style(
                     Style::default()
@@ -521,34 +576,8 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut KanbanBoard) {
                         .fg(Color::Yellow),
                 )
                 .block(Block::default().borders(Borders::ALL).title("Add Task"));
-            f.render_widget(input, chunks[1]);
-            f.set_cursor(chunks[1].x + app.input.len() as u16 + 1, chunks[1].y + 1)
+            f.render_widget(input, input_layout[1]);
+            f.set_cursor(input_layout[1].x + app.input.len() as u16 + 1, input_layout[1].y + 1)
         }
     }
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Percentage((100 - percent_y) / 2),
-                Constraint::Percentage(percent_y),
-                Constraint::Percentage((100 - percent_y) / 2),
-            ]
-            .as_ref(),
-        )
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(
-            [
-                Constraint::Percentage((100 - percent_x) / 2),
-                Constraint::Percentage(percent_x),
-                Constraint::Percentage((100 - percent_x) / 2),
-            ]
-            .as_ref(),
-        )
-        .split(popup_layout[1])[1]
 }

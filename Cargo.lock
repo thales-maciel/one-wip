@@ -199,6 +199,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9670a07f94779e00908f3e686eab508878ebb390ba6e604d3a284c00e8d0487b"
 
 [[package]]
+name = "one-wip"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "crossterm",
+ "rand",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -396,19 +409,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "tdk"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "crossterm",
- "rand",
- "ratatui",
- "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]
