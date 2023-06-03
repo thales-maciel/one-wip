@@ -4,6 +4,10 @@ One Wip is a tui built in Rust that provides a simple Kanban board for managing 
 
 Use vim-like keyboard shortcuts to interact with the Kanban board. Press F to enter focus mode.
 
+## Roadmap
+[ ] Add help bar or float window
+[ ] Implement file-based persistence
+
 ## Contributing
 
 If you encounter issues or have suggestions, please open an issue or submit a pull request.
@@ -11,3 +15,4 @@ If you encounter issues or have suggestions, please open an issue or submit a pu
 ## License
 
 MIT, do whatever you want.
+
