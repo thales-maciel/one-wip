@@ -2,6 +2,8 @@
 name = "one-wip"
 version = "0.1.1"
 edition = "2021"
+description = "A tui kanban board that allows only one item in doing"
+license = "MIT"
 
 [[bin]]
 edition = "2021"
