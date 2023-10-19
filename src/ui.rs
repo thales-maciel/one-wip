@@ -132,8 +132,8 @@ fn build_task_list<'a>(list: &Vec<String>, title: &str, is_selected: bool) -> Li
                 }))
                 .title(title.to_string()),
         )
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD))
-        .highlight_symbol("> ")
+        .highlight_style(if is_selected {Style::default().add_modifier(Modifier::BOLD)} else {Style::default()})
+        .highlight_symbol(if is_selected {"> "} else {"  "})
 }
 
 fn render_overview(app: &mut App, chunks: &[Rect], f: &mut Frame<impl Backend>) {
@@ -148,8 +148,8 @@ fn render_overview(app: &mut App, chunks: &[Rect], f: &mut Frame<impl Backend>) 
     let wip_list = build_task_list(&wip_tasks, "Wip", app.current_column == Column::Wip);
     let mut wip_list_state = ListState::default().with_selected(app.wip.as_ref().map(|_| 0));
 
-    let done_list = build_task_list(&app.todo.items, "Todo", app.current_column == Column::Todo);
-    let mut done_list_state = ListState::default().with_selected(app.todo.index);
+    let done_list = build_task_list(&app.done.items, "Done", app.current_column == Column::Done);
+    let mut done_list_state = ListState::default().with_selected(app.done.index);
 
     f.render_stateful_widget(todo_list, chunks[0], &mut todo_list_state);
     f.render_stateful_widget(wip_list, chunks[1], &mut wip_list_state);
